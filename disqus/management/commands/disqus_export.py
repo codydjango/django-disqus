@@ -8,7 +8,7 @@ from django.core.management.base import NoArgsCommand
 from django.utils import simplejson as json
 
 from disqus.api import DisqusClient
-
+import urllib2
 
 class Command(NoArgsCommand):
     option_list = NoArgsCommand.option_list + (
@@ -115,19 +115,29 @@ class Command(NoArgsCommand):
                 client.update_thread(
                     forum_api_key=forum_api_key,
                     thread_id=thread['id'],
-                    url=url)
+                    link=url)
 
             # name and email are optional in contrib.comments but required
             # in DISQUS. If they are not set, dummy values will be used
-            client.create_post(
+            
+            dct = dict(
                 forum_api_key=forum_api_key,
                 thread_id=thread['id'],
                 message=comment.comment.encode('utf-8'),
-                author_name=comment.userinfo.get('name',
-                                                 'nobody').encode('utf-8'),
-                author_email=comment.userinfo.get('email',
-                                                  'nobody@example.org'),
+                author_name=comment.userinfo.get('name', 'nobody').encode('utf-8'),
+                author_email=comment.userinfo.get('email', 'nobody@example.org'),
                 author_url=comment.userinfo.get('url', ''),
-                created_at=comment.submit_date.strftime('%Y-%m-%dT%H:%M'))
+                created_at=comment.submit_date.strftime('%Y-%m-%dT%H:%M')
+            )
+            
+            try:
+                client.create_post(**dct)
+            except urllib2.HTTPError:
+                continue
+            
             if state_file is not None:
                 self._save_state(state_file, comment.pk)
+            
+            print '%s successfully migrated.' % comment
+            comment.is_public = False#delete()
+            comment.save()
